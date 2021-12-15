@@ -6,6 +6,8 @@ import requests
 import json
 import random
 import discord
+import time
+import datetime
 from discord.ext import commands
 from discord import guild
 from discord_slash import SlashCommand, SlashContext
@@ -19,35 +21,73 @@ from servers import my_guilds
 from settings import prefix, logchannelid
 from colorama import Fore, Back, Style
 
+intents = discord.Intents.default()
+intents.members = True
 
-client = commands.Bot(command_prefix="sneki", intents=discord.Intents.all())
-slash = SlashCommand(client, sync_commands=True)
+bot = commands.Bot("{}".format(prefix), intents=intents)
+slash = SlashCommand(bot, sync_commands=True)
 
-def cmd_toggle():
-    settingr = open("Database/off-switch.py")
-    c_setting = settingr.read()
-    settingr.close()
-    return c_setting
-
-async def cmd_log(type, message=False, ctx=False):
-    logchannel = client.get_channel(logchannelid)
+async def cmd_log(type, ctx=False):
+    logchannel = bot.get_channel(logchannelid)
     if type == "slash":
         await logchannel.send('{} used the Slash-Command "{}".'.format(ctx.author, ctx.command))
-    elif type == "test":
-        msg = message.content
+    elif type == "text":
+        msg = ctx.content
         allwords = msg.split(' ')
-        if msg.startswith(prefix):
-            await logchannel.send('{} used the command "{}"'.format(message.author, allwords[0]))
+        await logchannel.send('{} used the command "{}"'.format(ctx.author, allwords[0]))
 
-@client.event
+def permcheck(message=None, adminrequired=False):
+    def cmd_toggle():
+        settingr = open("Database/off-switch.py")
+        c_setting = settingr.read()
+        settingr.close()
+        if c_setting == "True":
+            return True
+        elif c_setting == "False":
+            return False
+    if not message == None:   
+        if not message.author == bot.user:
+            if cmd_toggle():
+                if adminrequired:
+                    if message.author.id == OwnerID:
+                        return True
+                    else:
+                        return False 
+                else:
+                    return True
+            else:
+                return False
+        else:
+            return False
+    else:
+        if cmd_toggle():
+            if adminrequired:
+                if message.author.id == OwnerID:
+                    return True
+                else:
+                    return False 
+            else:
+                return True
+        else:
+            return False
+
+cmd_off = "Commandsss are currently turned off."
+
+async def grab_msginfo(message):
+    msg = message.content
+    allwords = msg.split(' ')
+    args = msg.lower().split(' ')[1:]
+    await cmd_log("text", message)
+    return msg, allwords, args
+
+@bot.event
 async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
-    c_setting = cmd_toggle()
-    if (c_setting == "True"):
-        print(Fore.GREEN + 'Command Toggle : {}'.format(cmd_toggle()))
+    print('We have logged in as {0.user}'.format(bot))
+    if permcheck():
+        print(Fore.GREEN + 'Command Toggle : {}'.format(permcheck()))
         print(Style.RESET_ALL)
     else:
-        print(Fore.RED + 'Command Toggle : {}'.format(cmd_toggle()))
+        print(Fore.RED + 'Command Toggle : {}'.format(permcheck()))
         print(Style.RESET_ALL)
 
 @slash.slash(
@@ -97,8 +137,7 @@ async def on_ready():
 )
 async def _database(ctx:SlashContext, action:str, file:str, variable:str=False, content=False):
 
-    c_setting = cmd_toggle()
-    await cmd_log("slash", 0, ctx)
+    await cmd_log("slash", ctx)
 
     if action == "read":
         data = open('Database/{}.py'.format(file))
@@ -169,67 +208,132 @@ async def _database(ctx:SlashContext, action:str, file:str, variable:str=False, 
     ]
 )
 async def _help(ctx:SlashContext, command:str):
-    c_setting = cmd_toggle()
-    await cmd_log("slash", 0, ctx)
+    await cmd_log("slash", ctx)
 
-    if c_setting == "True":
+    if permcheck():
         await ctx.send('{}'.format(command_help(command)))
     else:
         await ctx.send("Commandsss are currently turned off.")
 
-@client.event
-async def on_message(message):
-    c_setting = cmd_toggle()
-    msg = message.content
-    allwords = msg.split(' ')
-    args = msg.lower().split(' ')[1:]
-    await cmd_log("text", message)
-
-    def cmd(wanted): 
-        if msg.lower().startswith('{}'.format(prefix) + wanted):
-            return True
+@slash.slash(
+    name="reminder",
+    description         = "Ssset a timer to remind you of sssometing?",
+    guild_ids           = my_guilds,
+    default_permission  = True,
+    options             = [
+        create_option(
+            name        = "reminder",
+            description = "What should the Bot remind you of?",
+            required    = True,
+            option_type = 3
+        ),
+        create_option(
+            name        = "hours",
+            description = "Enter time in hours",
+            required    = False,
+            option_type = 4
+        ),
+        create_option(
+            name        = "minutes",
+            description = "Enter time in minutes",
+            required    = False,
+            option_type = 4
+        ),
+        create_option(
+            name        = "seconds",
+            description = "Enter time in seconds",
+            required    = False,
+            option_type = 4
+        )
+    ]
+)
+async def _reminder(ctx:SlashContext, hours:int=0, minutes:int=0, seconds:int=0, reminder:str=""):
+    await cmd_log("slash", ctx)
+ 
+    if permcheck():
+        if len(reminder) < 1950:
+            author = bot.get_user(ctx.author.id)
+            await ctx.send('Registered Reminder: {}'.format(reminder))
+            # Calculate the total number of seconds
+            total_seconds = hours * 3600 + minutes * 60 + seconds
         
+            # While loop that checks if total_seconds reaches zero
+            # If not zero, decrement total time by one second
+            while total_seconds > 0:
+    
+                # Timer represents time left on countdown
+                timer = datetime.timedelta(seconds = total_seconds)
+        
+                # Delays the program one second
+                time.sleep(1)
+        
+                # Reduces total time by one second
+                total_seconds -= 1
+            await author.send('Here is your Reminder:\n\n{}'.format(reminder))
         else:
-            return False
+            await ctx.send('Please provide a smaller reminder')
+    else:
+        await ctx.send("Commandsss are currently turned off.")
 
+@bot.command()
+async def test(ctx, arg):
+    await cmd_log("text", ctx.message)
+    if permcheck(ctx.message):
+        print("test")
+        await ctx.send(arg)
+    else:
+        await ctx.send(cmd_off)
+
+# Command Template:
+"""
+@bot.command()
+async def command(ctx):
+    if permcheck():
+    else:
+        await ctx.send(cmd_off)
+"""
+
+@bot.command()
+async def commandtoggle(ctx):
+    await cmd_log("text", ctx.message)
+    message = ctx.message
     if message.author.id == OwnerID:
         admin = True
     else:
         admin = False
 
-    if message.author == client.user: 
-        return
-
-    if cmd('commandtoggle'):
-        if admin == True:
+    if admin == True:
+        settingr = open("Database/off-switch.py")
+        c_setting = settingr.read()
+        if c_setting == "True":
+            settingr.close()
+            settingw = open("Database/off-switch.py", "w")
+            settingw.write("False")
+            settingw.close()
             settingr = open("Database/off-switch.py")
             c_setting = settingr.read()
-            if c_setting == "True":
-                settingr.close()
-                settingw = open("Database/off-switch.py", "w")
-                settingw.write("False")
-                settingw.close()
-                settingr = open("Database/off-switch.py")
-                c_setting = settingr.read()
-                await message.channel.send('Set to ' + c_setting)
-                settingr.close()
-                cmd_toggle()
-            else:
-                settingr.close()
-                settingw = open("Database/off-switch.py", "w")
-                settingw.write("True")
-                settingw.close()
-                settingr = open("Database/off-switch.py")
-                c_setting = settingr.read()
-                await message.channel.send('Set to ' + c_setting)
-                settingr.close()
-                cmd_toggle()
-       
+            await ctx.send('Set to ' + c_setting)
+            settingr.close()
         else:
-             await message.channel.send('No Permisssion')
+            settingr.close()
+            settingw = open("Database/off-switch.py", "w")
+            settingw.write("True")
+            settingw.close()
+            settingr = open("Database/off-switch.py")
+            c_setting = settingr.read()
+            await ctx.send('Set to ' + c_setting)
+            settingr.close()
+    
+    else:
+            await ctx.send('No Permisssion')
 
-    if cmd('sneki'):
-        if c_setting == "True":
-            await message.channel.send('Hewwo!')
+@bot.command()
+async def sneki(ctx):
+    await cmd_log("text", ctx.message)
+    if permcheck(ctx.message):
+        await ctx.send('Hewwo!')
+    else:
+        await ctx.send(cmd_off)
 
-client.run(token)
+
+bot.run(token)
